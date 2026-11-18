@@ -14,7 +14,11 @@ Settings → Pages → Source: *Deploy from a branch* → `main` / root → Save
 ## Run locally
 `python3 -m http.server` then open http://localhost:8000 (ES modules need http, not file://).
 
+## Local testing without internet
+Run a PeerJS server (`npx peer --port 9000 --host 127.0.0.1`) and add `&peerhost=127.0.0.1:9000` to the URL.
+
 ## Regenerate puzzles
 ```
-cd tools && npm i chess.js@1.0.0 && node gen-puzzles.mjs > out.json
+cd tools && npm i chess.js@1.0.0 && node gen-puzzles.mjs 1 > out.jsonl   # Ctrl+C when you have enough
+node build-puzzles.mjs < out.jsonl
 ```

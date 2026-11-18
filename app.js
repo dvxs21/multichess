@@ -1,8 +1,10 @@
-import { Chess } from 'https://cdn.jsdelivr.net/npm/chess.js@1.0.0/+esm';
+import { Chess } from './vendor/chess.js';
 import { PUZZLES } from './puzzles.js';
 
 const $ = (id) => document.getElementById(id);
 const PREFIX = 'multichess-v1-';
+const _ph = new URLSearchParams(location.search).get('peerhost');
+const PEER_OPTS = _ph ? { host: _ph.split(':')[0], port: +_ph.split(':')[1], path: '/', secure: false } : {};
 const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 const show = (id) => { document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden')); $(id).classList.remove('hidden'); };
 const status = (t) => { $('status').textContent = t; };
@@ -34,7 +36,7 @@ function hostRoom() {
   settings = { rounds: +$('rounds').value, diff: $('diff').value, time: +$('time').value };
   const code = code5();
   status('Creating room…');
-  peer = new Peer(PREFIX + code);
+  peer = new Peer(PREFIX + code, PEER_OPTS);
   peer.on('open', (id) => {
     isHost = true; myId = id;
     players = [{ id, name: myName(), score: 0, solved: false }];
@@ -55,7 +57,7 @@ function joinRoom(code) {
   if (code.length !== 5) return status('Enter a 5 character code');
   localStorage.setItem('mc-name', myName());
   status('Connecting…');
-  peer = new Peer();
+  peer = new Peer(PEER_OPTS);
   peer.on('open', (id) => {
     myId = id;
     hostConn = peer.connect(PREFIX + code, { reliable: true });
@@ -145,6 +147,7 @@ function renderFinal() {
 // ---------- puzzle play ----------
 let tick = null;
 function startPuzzle(m) {
+  window.__mc = () => cur;
   const chess = new Chess(m.pz.fen);
   cur = { round: m.round, pz: m.pz, chess, step: 0, sel: null, last: null, me: chess.turn(), done: false, ended: false, lockUntil: 0, endsAt: Date.now() + m.ms };
   const n = Math.ceil(m.pz.sol.length / 2);
@@ -240,9 +243,16 @@ $('startBtn').onclick = startGame;
 $('againBtn').onclick = startGame;
 $('homeBtn').onclick = () => { location.href = location.pathname; };
 $('copyBtn').onclick = async () => {
-  const url = `${location.origin}${location.pathname}?room=${$('codeOut').textContent}`;
+  const url = `${location.origin}${location.pathname}?room=${$('codeOut').textContent}${_ph ? '&peerhost=' + _ph : ''}`;
   try { await navigator.clipboard.writeText(url); $('copyBtn').textContent = 'Copied!'; } catch { prompt('Copy this link', url); }
   setTimeout(() => $('copyBtn').textContent = 'Copy invite link', 1500);
 };
 const qRoom = new URLSearchParams(location.search).get('room');
 if (qRoom) { $('codeIn').value = qRoom.toUpperCase(); $('joinBtn').textContent = 'Join ' + qRoom.toUpperCase(); }
+
+// keep phone screens awake during a game (backgrounding a phone drops the WebRTC link)
+let wake = null;
+async function keepAwake() { try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => wake = null); } } catch {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !$('game').classList.contains('hidden')) keepAwake(); });
+$('board').addEventListener('click', keepAwake, { once: true });
+['hostBtn', 'joinBtn', 'startBtn'].forEach(id => $(id).addEventListener('click', keepAwake));
