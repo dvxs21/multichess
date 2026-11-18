@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MultiChess Puzzle Race</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<header><h1>♞ MultiChess</h1><span id="status"></span></header>
+
+<main>
+  <section id="home" class="screen">
+    <p class="lead">Race your friends through checkmate puzzles. Host a room, share the code, first to find the mate wins the round.</p>
+    <label>Your name <input id="name" maxlength="16" placeholder="Player"></label>
+    <div class="card">
+      <h2>Host a room</h2>
+      <label>Rounds <select id="rounds"><option>5</option><option selected>10</option><option>15</option><option>20</option></select></label>
+      <label>Difficulty <select id="diff"><option value="mix" selected>Mixed</option><option value="m1">Mate in 1</option><option value="m2">Mate in 2</option></select></label>
+      <label>Round time <select id="time"><option value="30">30s</option><option value="60" selected>60s</option><option value="90">90s</option></select></label>
+      <button id="hostBtn">Create room</button>
+    </div>
+    <div class="card">
+      <h2>Join a room</h2>
+      <input id="codeIn" maxlength="5" placeholder="CODE" autocapitalize="characters">
+      <button id="joinBtn">Join</button>
+    </div>
+  </section>
+
+  <section id="lobby" class="screen hidden">
+    <h2>Room code</h2>
+    <div class="code" id="codeOut"></div>
+    <button id="copyBtn" class="ghost">Copy invite link</button>
+    <h3>Players</h3>
+    <ul id="lobbyList" class="players"></ul>
+    <button id="startBtn" class="hidden">Start game</button>
+    <p id="waitMsg" class="muted">Waiting for the host to start…</p>
+  </section>
+
+  <section id="game" class="screen hidden">
+    <div class="topbar">
+      <span id="roundLbl"></span>
+      <span id="taskLbl"></span>
+      <span id="timer" class="timer"></span>
+    </div>
+    <div class="layout">
+      <div class="boardwrap"><div id="board"></div><div id="feedback"></div></div>
+      <aside><h3>Scores</h3><ul id="scoreList" class="players"></ul></aside>
+    </div>
+  </section>
+
+  <section id="results" class="screen hidden">
+    <h2>Final standings</h2>
+    <ol id="finalList" class="players final"></ol>
+    <button id="againBtn" class="hidden">Play again</button>
+    <button id="homeBtn" class="ghost">Leave</button>
+  </section>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
