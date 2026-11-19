@@ -1,11 +1,11 @@
 import { Chess } from './vendor/chess.js';
 import { PUZZLES } from './puzzles.js';
+import { createBoard, sound, playFor } from './board.js';
 
 const $ = (id) => document.getElementById(id);
 const PREFIX = 'multichess-v1-';
 const _ph = new URLSearchParams(location.search).get('peerhost');
 const PEER_OPTS = _ph ? { host: _ph.split(':')[0], port: +_ph.split(':')[1], path: '/', secure: false } : {};
-const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 const show = (id) => { document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden')); $(id).classList.remove('hidden'); };
 const status = (t) => { $('status').textContent = t; };
 const esc = (s) => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
@@ -149,77 +149,51 @@ let tick = null;
 function startPuzzle(m) {
   window.__mc = () => cur;
   const chess = new Chess(m.pz.fen);
-  cur = { round: m.round, pz: m.pz, chess, step: 0, sel: null, last: null, me: chess.turn(), done: false, ended: false, lockUntil: 0, endsAt: Date.now() + m.ms };
+  cur = { round: m.round, pz: m.pz, chess, step: 0, me: chess.turn(), done: false, ended: false, lockUntil: 0, endsAt: Date.now() + m.ms };
   const n = Math.ceil(m.pz.sol.length / 2);
   $('roundLbl').textContent = `Round ${m.round}/${m.total}`;
   $('taskLbl').textContent = `${cur.me === 'w' ? 'White' : 'Black'} to move · mate in ${n}`;
   feedback('');
   clearInterval(tick);
   tick = setInterval(() => { $('timer').textContent = Math.max(0, Math.ceil((cur.endsAt - Date.now()) / 1000)) + 's'; }, 200);
-  renderBoard(); renderScores(); show('game');
+  board.set(chess, cur.me === 'b'); sound.start(); renderScores(); show('game');
 }
 
 function feedback(t, cls = '') { const f = $('feedback'); f.textContent = t; f.className = cls; }
 
-function renderBoard() {
-  const b = $('board'); const ch = cur.chess; const flip = cur.me === 'b';
-  const files = 'abcdefgh'; let html = '';
-  const targets = cur.sel ? ch.moves({ square: cur.sel, verbose: true }) : [];
-  for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) {
-    const rank = flip ? r + 1 : 8 - r, file = flip ? files[7 - f] : files[f], sq = file + rank;
-    const pc = ch.get(sq); const t = targets.find(x => x.to === sq);
-    const cls = ['sq', (r + f) % 2 ? 'd' : 'l'];
-    if (cur.sel === sq) cls.push('sel');
-    if (cur.last && (cur.last.from === sq || cur.last.to === sq)) cls.push('last');
-    if (t) cls.push('hint', pc ? 'cap' : '');
-    html += `<div class="${cls.join(' ')}" data-sq="${sq}">` +
-      (pc ? `<span class="pc ${pc.color}">${GLYPH[pc.type]}︎</span>` : '') +
-      (f === 7 ? `<span class="coord r">${rank}</span>` : '') + (r === 7 ? `<span class="coord f">${file}</span>` : '') + '</div>';
-  }
-  b.innerHTML = html;
-}
-
-$('board').addEventListener('click', (e) => {
-  const el = e.target.closest('.sq'); if (!el || !cur || cur.done || cur.ended) return;
-  if (Date.now() < cur.lockUntil) return;
-  const sq = el.dataset.sq, ch = cur.chess;
-  if (ch.turn() !== cur.me) return;
-  const pc = ch.get(sq);
-  if (cur.sel) {
-    const mv = ch.moves({ square: cur.sel, verbose: true }).find(m => m.to === sq);
-    if (mv) return tryMove(cur.sel, sq);
-  }
-  cur.sel = pc && pc.color === cur.me ? (cur.sel === sq ? null : sq) : null;
-  renderBoard();
+const board = createBoard($('board'), {
+  canInteract: () => cur && !cur.done && !cur.ended && Date.now() >= cur.lockUntil && cur.chess.turn() === cur.me,
+  onMove: (from, to) => tryMove(from, to),
 });
 
 function tryMove(from, to) {
   const ch = cur.chess, expected = cur.pz.sol[cur.step];
   const promo = expected && expected.slice(0, 4) === from + to && expected[4] ? expected[4] : 'q';
   const mv = ch.move({ from, to, promotion: promo });
-  cur.sel = null;
   const finalStep = cur.step === cur.pz.sol.length - 1;
   // final move: any checkmate counts. earlier moves: must match the unique key move.
   const ok = finalStep ? ch.isCheckmate() : mv.lan === expected;
   if (!ok) {
     ch.undo(); cur.lockUntil = Date.now() + 2000;
-    feedback('✗ Not it. 2s penalty', 'bad'); renderBoard();
+    board.snapBack(from); sound.wrong();
+    feedback('✗ Not it. 2s penalty', 'bad');
     setTimeout(() => { if (cur && !cur.done && !cur.ended) feedback(''); }, 2000);
     return;
   }
-  cur.last = mv; cur.step++;
+  cur.step++; board.animate(mv); playFor(mv, ch);
   if (finalStep) {
-    cur.done = true; feedback('✓ Checkmate! Waiting for others…', 'good'); renderBoard();
+    cur.done = true; feedback('✓ Checkmate! Waiting for others…', 'good');
+    setTimeout(sound.solved, 150);
     send({ t: 'solved', round: cur.round });
     return;
   }
-  feedback('✓ Good move…', 'good'); renderBoard();
+  feedback('✓ Good move…', 'good');
   const round = cur.round;
   setTimeout(() => {                       // opponent reply
     if (!cur || cur.round !== round || cur.ended) return;
-    cur.last = ch.move(cur.pz.sol[cur.step]); cur.step++;
-    feedback('Now finish it.'); renderBoard();
-  }, 500);
+    const r = ch.move(cur.pz.sol[cur.step]); cur.step++; board.animate(r); playFor(r, ch);
+    feedback('Now finish it.');
+  }, 550);
 }
 
 function revealSolution() {
@@ -229,8 +203,8 @@ function revealSolution() {
   const r = cur.round;
   const stepper = () => {
     if (!cur || cur.round !== r || cur.step >= cur.pz.sol.length) { feedback('Solution: ' + san.join(' '), 'bad'); return; }
-    cur.last = ch.move(cur.pz.sol[cur.step]); san.push(cur.last.san); cur.step++; renderBoard();
-    setTimeout(stepper, 600);
+    const mv = ch.move(cur.pz.sol[cur.step]); san.push(mv.san); cur.step++; board.animate(mv); playFor(mv, ch);
+    setTimeout(stepper, 700);
   };
   stepper();
 }
@@ -241,6 +215,9 @@ $('joinBtn').onclick = () => joinRoom($('codeIn').value);
 $('codeIn').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom($('codeIn').value); });
 $('startBtn').onclick = startGame;
 $('againBtn').onclick = startGame;
+const syncMute = () => { $('muteBtn').textContent = sound.muted ? '🔇' : '🔊'; };
+$('muteBtn').onclick = () => { sound.toggle(); syncMute(); };
+syncMute();
 $('homeBtn').onclick = () => { location.href = location.pathname; };
 $('copyBtn').onclick = async () => {
   const url = `${location.origin}${location.pathname}?room=${$('codeOut').textContent}${_ph ? '&peerhost=' + _ph : ''}`;
@@ -254,5 +231,5 @@ if (qRoom) { $('codeIn').value = qRoom.toUpperCase(); $('joinBtn').textContent =
 let wake = null;
 async function keepAwake() { try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => wake = null); } } catch {} }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !$('game').classList.contains('hidden')) keepAwake(); });
-$('board').addEventListener('click', keepAwake, { once: true });
+$('board').addEventListener('pointerdown', keepAwake, { once: true });
 ['hostBtn', 'joinBtn', 'startBtn'].forEach(id => $(id).addEventListener('click', keepAwake));
